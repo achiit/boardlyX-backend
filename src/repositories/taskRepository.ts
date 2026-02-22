@@ -320,7 +320,7 @@ export async function listMyBoardTasks(userId: string): Promise<MyTaskRow[]> {
      ORDER BY t.id, t.updated_at DESC`,
     [userId]
   );
-  rows.sort((a, b) => {
+  rows.sort((a: MyTaskRow, b: MyTaskRow) => {
     if (a.board_column !== b.board_column) return a.board_column.localeCompare(b.board_column);
     if (a.board_order !== b.board_order) return a.board_order - b.board_order;
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();

@@ -12,6 +12,7 @@ exports.deleteTeamTask = deleteTeamTask;
 exports.listTeamTasks = listTeamTasks;
 exports.getTaskAssignees = getTaskAssignees;
 exports.setTaskAssignees = setTaskAssignees;
+exports.listMyBoardTasks = listMyBoardTasks;
 exports.updateBoardPositions = updateBoardPositions;
 const db_1 = require("../db");
 async function createTask(input) {
@@ -215,6 +216,25 @@ async function setTaskAssignees(taskId, userIds) {
     finally {
         client.release();
     }
+}
+async function listMyBoardTasks(userId) {
+    const { rows } = await db_1.pool.query(`SELECT DISTINCT ON (t.id)
+       t.*,
+       tm.name AS team_name
+     FROM tasks t
+     LEFT JOIN task_assignees ta ON ta.task_id = t.id
+     LEFT JOIN teams tm ON tm.id = t.team_id
+     WHERE (t.user_id = $1 AND t.team_id IS NULL)
+        OR ta.user_id = $1
+     ORDER BY t.id, t.updated_at DESC`, [userId]);
+    rows.sort((a, b) => {
+        if (a.board_column !== b.board_column)
+            return a.board_column.localeCompare(b.board_column);
+        if (a.board_order !== b.board_order)
+            return a.board_order - b.board_order;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+    return rows;
 }
 async function updateBoardPositions(moves) {
     const client = await db_1.pool.connect();

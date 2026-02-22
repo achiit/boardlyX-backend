@@ -27,7 +27,9 @@ async function main() {
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
   });
-
+  app.use('/hello-world', (_req, res) => {
+    res.json({ message: 'Hello World' });
+  });
   app.use('/auth', authLimiter, authRouter);
   app.use('/api/tasks', apiLimiter, taskRoutes);
   app.use('/api/teams', apiLimiter, teamRoutes);

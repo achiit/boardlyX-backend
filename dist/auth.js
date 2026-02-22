@@ -133,7 +133,7 @@ router.post('/wallet/login', async (req, res) => {
             return res.status(400).json({ error: 'No nonce for address' });
         }
         const nonce = rows[0].nonce;
-        const message = `Sign in to Astra\n\nNonce: ${nonce}`;
+        const message = `Sign in to boardlyX\n\nNonce: ${nonce}`;
         const valid = await (0, viem_1.verifyMessage)({
             address: address.toLowerCase(),
             message,

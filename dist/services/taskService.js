@@ -37,6 +37,7 @@ exports.createTask = createTask;
 exports.getTask = getTask;
 exports.listTasks = listTasks;
 exports.updateTask = updateTask;
+exports.listMyBoardTasks = listMyBoardTasks;
 exports.deleteTask = deleteTask;
 exports.storeOnChain = storeOnChain;
 exports.verifyTask = verifyTask;
@@ -56,6 +57,9 @@ function toTaskResponse(row) {
         taskHash: row.task_hash,
         transactionHash: row.transaction_hash,
         chainTimestamp: row.chain_timestamp ? new Date(row.chain_timestamp).toISOString() : null,
+        boardColumn: row.board_column || 'backlog',
+        boardOrder: row.board_order ?? 0,
+        teamId: row.team_id || null,
         createdAt: new Date(row.created_at).toISOString(),
         updatedAt: new Date(row.updated_at).toISOString(),
     };
@@ -70,6 +74,7 @@ async function createTask(userId, body) {
         priority: body.priority ?? 'medium',
         dueDate,
         taskHash: null,
+        boardColumn: body.boardColumn || 'backlog',
     });
     const createdAt = inserted.created_at instanceof Date
         ? inserted.created_at.toISOString()
@@ -115,10 +120,21 @@ async function updateTask(id, userId, body) {
         status: body.status,
         priority: body.priority,
         dueDate,
+        boardColumn: body.boardColumn,
+        boardOrder: body.boardOrder,
     });
     if (!row)
         return null;
     return toTaskResponse(row);
+}
+async function listMyBoardTasks(userId) {
+    const rows = await taskRepo.listMyBoardTasks(userId);
+    const enriched = await Promise.all(rows.map(async (r) => ({
+        ...toTaskResponse(r),
+        teamName: r.team_name,
+        assignees: await taskRepo.getTaskAssignees(r.id),
+    })));
+    return enriched;
 }
 async function deleteTask(id, userId) {
     return taskRepo.deleteTask(id, userId);

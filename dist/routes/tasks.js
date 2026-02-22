@@ -47,6 +47,12 @@ router.get('/', (req, res, next) => {
 router.get('/analytics', (req, res, next) => {
     taskController.getAnalytics(req, res).catch(next);
 });
+router.get('/my-board', (req, res, next) => {
+    taskController.myBoardTasks(req, res).catch(next);
+});
+router.put('/:id/move', (req, res, next) => {
+    taskController.movePersonalTask(req, res).catch(next);
+});
 router.get('/:id', (req, res, next) => {
     taskController.getTask(req, res).catch(next);
 });

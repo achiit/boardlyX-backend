@@ -38,6 +38,8 @@ const auth_1 = require("../middleware/auth");
 const teamRepo = __importStar(require("../repositories/teamRepository"));
 const notifRepo = __importStar(require("../repositories/notificationRepository"));
 const taskRepo = __importStar(require("../repositories/taskRepository"));
+const chatRepo = __importStar(require("../repositories/chatRepository"));
+const socket_1 = require("../socket");
 const db_1 = require("../db");
 const zod_1 = require("zod");
 const router = (0, express_1.Router)();
@@ -64,6 +66,10 @@ router.post('/', async (req, res, next) => {
     try {
         const body = CreateTeamSchema.parse(req.body);
         const team = await teamRepo.createTeam(body.name, userId(req));
+        // Auto-create group chat for this team
+        const groupConv = await chatRepo.createConversation('group', body.name, team.id);
+        await chatRepo.addMember(groupConv.id, userId(req));
+        (0, socket_1.joinUserToConversation)(userId(req), groupConv.id);
         res.status(201).json(team);
     }
     catch (err) {
@@ -143,6 +149,12 @@ router.post('/invitations/:invId/accept', async (req, res, next) => {
             return res.status(403).json({ error: 'This invitation is not for you' });
         await teamRepo.updateInvitationStatus(inv.id, 'accepted');
         await teamRepo.addTeamMember(inv.team_id, userId(req));
+        // Auto-add to team group chat
+        const groupConv = await chatRepo.findGroupConversation(inv.team_id);
+        if (groupConv) {
+            await chatRepo.addMember(groupConv.id, userId(req));
+            (0, socket_1.joinUserToConversation)(userId(req), groupConv.id);
+        }
         const members = await teamRepo.getTeamMembers(inv.team_id);
         for (const m of members) {
             if (m.user_id !== userId(req)) {

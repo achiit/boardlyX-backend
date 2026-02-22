@@ -114,4 +114,39 @@ async function initDb() {
   `);
     await exports.pool.query(`alter table tasks add constraint fk_tasks_team foreign key (team_id) references teams(id) on delete set null;`).catch(() => { });
     await exports.pool.query(`create index if not exists idx_tasks_team_id on tasks(team_id);`).catch(() => { });
+    // ── Chat tables ──
+    await exports.pool.query(`
+    create table if not exists conversations (
+      id uuid primary key default gen_random_uuid(),
+      type text not null check (type in ('group', 'dm')),
+      name text,
+      team_id uuid references teams(id) on delete cascade,
+      created_at timestamptz default now()
+    );
+  `);
+    await exports.pool.query(`
+    create table if not exists conversation_members (
+      conversation_id uuid not null references conversations(id) on delete cascade,
+      user_id uuid not null references users(id) on delete cascade,
+      joined_at timestamptz default now(),
+      primary key (conversation_id, user_id)
+    );
+  `);
+    await exports.pool.query(`create index if not exists idx_conv_members_user on conversation_members(user_id);`);
+    await exports.pool.query(`
+    create table if not exists messages (
+      id uuid primary key default gen_random_uuid(),
+      conversation_id uuid not null references conversations(id) on delete cascade,
+      sender_id uuid not null references users(id) on delete cascade,
+      content text default '',
+      media_type text,
+      media_data text,
+      created_at timestamptz default now()
+    );
+  `);
+    await exports.pool.query(`create index if not exists idx_messages_conv on messages(conversation_id, created_at desc);`);
+    // Migration: add media columns to existing messages table
+    await exports.pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type text;`).catch(() => { });
+    await exports.pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_data text;`).catch(() => { });
+    await exports.pool.query(`ALTER TABLE messages ALTER COLUMN content DROP NOT NULL;`).catch(() => { });
 }

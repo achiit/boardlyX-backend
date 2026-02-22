@@ -40,6 +40,8 @@ exports.updateTask = updateTask;
 exports.deleteTask = deleteTask;
 exports.storeOnChain = storeOnChain;
 exports.verifyTask = verifyTask;
+exports.myBoardTasks = myBoardTasks;
+exports.movePersonalTask = movePersonalTask;
 exports.getAnalytics = getAnalytics;
 const zod_1 = require("zod");
 const taskService = __importStar(require("../services/taskService"));
@@ -49,6 +51,7 @@ const CreateTaskSchema = zod_1.z.object({
     status: zod_1.z.enum(['pending', 'completed']).optional(),
     priority: zod_1.z.enum(['low', 'medium', 'high']).optional(),
     dueDate: zod_1.z.string().optional().nullable(),
+    boardColumn: zod_1.z.string().optional(),
 });
 const UpdateTaskSchema = zod_1.z.object({
     title: zod_1.z.string().min(1).max(500).optional(),
@@ -56,6 +59,8 @@ const UpdateTaskSchema = zod_1.z.object({
     status: zod_1.z.enum(['pending', 'completed']).optional(),
     priority: zod_1.z.enum(['low', 'medium', 'high']).optional(),
     dueDate: zod_1.z.string().optional().nullable(),
+    boardColumn: zod_1.z.string().optional(),
+    boardOrder: zod_1.z.number().optional(),
 });
 const StoreOnChainSchema = zod_1.z.object({
     transactionHash: zod_1.z.string().min(1),
@@ -148,6 +153,26 @@ async function verifyTask(req, res) {
     const userWallet = req.user?.walletAddress ?? req.query.walletAddress;
     const result = await taskService.verifyTask(req.params.id, userId, userWallet);
     return res.json(result);
+}
+async function myBoardTasks(req, res) {
+    const userId = getUserId(req);
+    try {
+        const tasks = await taskService.listMyBoardTasks(userId);
+        return res.json(tasks);
+    }
+    catch (err) {
+        if (err.status)
+            return res.status(err.status).json({ error: err.message });
+        throw err;
+    }
+}
+async function movePersonalTask(req, res) {
+    const userId = getUserId(req);
+    const { boardColumn, boardOrder } = req.body;
+    const task = await taskService.updateTask(req.params.id, userId, { boardColumn, boardOrder });
+    if (!task)
+        return res.status(404).json({ error: 'Task not found' });
+    return res.json(task);
 }
 async function getAnalytics(req, res) {
     const userId = getUserId(req);

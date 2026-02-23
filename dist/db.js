@@ -32,6 +32,8 @@ async function initDb() {
   `);
     await exports.pool.query(`alter table users add column if not exists name text;`).catch(() => { });
     await exports.pool.query(`alter table users add column if not exists username text;`).catch(() => { });
+    await exports.pool.query(`alter table users add column if not exists telegram_chat_id text;`).catch(() => { });
+    await exports.pool.query(`alter table users add column if not exists telegram_username text;`).catch(() => { });
     await exports.pool.query(`create unique index if not exists idx_users_username on users(username) where username is not null;`).catch(() => { });
     await exports.pool.query(`
     create table if not exists wallet_nonces (

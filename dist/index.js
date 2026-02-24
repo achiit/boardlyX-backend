@@ -18,6 +18,7 @@ const rateLimit_1 = require("./middleware/rateLimit");
 const errorHandler_1 = require("./middleware/errorHandler");
 const socket_1 = require("./socket");
 const chatRepository_1 = require("./repositories/chatRepository");
+require("./telegramBot");
 async function main() {
     await (0, db_1.initDb)();
     await (0, chatRepository_1.backfillTeamGroupChats)();
@@ -27,6 +28,9 @@ async function main() {
     app.use(express_1.default.json({ limit: '5mb' }));
     app.get('/health', (_req, res) => {
         res.json({ ok: true });
+    });
+    app.use('/hello-world', (_req, res) => {
+        res.json({ message: 'Hello World' });
     });
     app.use('/auth', rateLimit_1.authLimiter, auth_1.default);
     app.use('/api/tasks', rateLimit_1.apiLimiter, tasks_1.default);

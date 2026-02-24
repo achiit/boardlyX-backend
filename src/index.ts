@@ -13,6 +13,7 @@ import { apiLimiter, authLimiter } from './middleware/rateLimit';
 import { errorHandler } from './middleware/errorHandler';
 import { initSocket } from './socket';
 import { backfillTeamGroupChats } from './repositories/chatRepository';
+import './telegramBot';
 
 async function main() {
   await initDb();

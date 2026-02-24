@@ -41,12 +41,29 @@ router.get('/search', async (req: Request, res: Response, next: NextFunction) =>
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, name, email, username, wallet_address FROM users WHERE id = $1',
+      'SELECT id, name, email, username, wallet_address, telegram_username FROM users WHERE id = $1',
       [userId(req)],
     );
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });
     res.json(rows[0]);
   } catch (err) { next(err); }
+});
+
+router.post('/me/telegram', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { telegramId, telegramUsername } = req.body;
+
+    // We update both if provided, or clear them if null
+    await pool.query(
+      'UPDATE users SET telegram_chat_id = $1, telegram_username = $2 WHERE id = $3',
+      [telegramId || null, telegramUsername || null, userId(req)]
+    );
+
+    res.json({ success: true, message: 'Telegram ID updated successfully' });
+  } catch (err) {
+    console.error('Failed to update telegram ID', err);
+    next(err);
+  }
 });
 
 export default router;

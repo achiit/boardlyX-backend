@@ -85,15 +85,21 @@ function initSocket(httpServer) {
         }
         // ── Send Message ──
         socket.on('send_message', async (data, callback) => {
+            console.log(`[Socket] received send_message from ${userId} for conversation ${data?.conversationId}`);
             try {
                 const { conversationId, content } = data;
-                if (!conversationId || !content?.trim())
+                if (!conversationId || !content?.trim()) {
+                    console.log(`[Socket] missing conversationId or content`);
                     return;
+                }
                 // Verify membership
                 const member = await chatRepo.isMember(conversationId, userId);
-                if (!member)
+                if (!member) {
+                    console.log(`[Socket] user ${userId} is not a member of conversation ${conversationId}`);
                     return callback?.({ error: 'Not a member' });
+                }
                 // Save to DB
+                console.log(`[Socket] saving message to DB...`);
                 const message = await chatRepo.createMessage(conversationId, userId, content.trim());
                 // Fetch sender info
                 const { pool } = require('./db');
@@ -104,8 +110,17 @@ function initSocket(httpServer) {
                     sender: { id: sender.id, name: sender.name, username: sender.username },
                 };
                 // Broadcast to the conversation room
+                console.log(`[Socket] broadcasting message to room conv:${conversationId}`);
                 io.to(`conv:${conversationId}`).emit('new_message', fullMessage);
                 callback?.({ success: true, message: fullMessage });
+                // Dispatch Telegram notifications
+                console.log(`[Socket] triggering telegram notifications...`);
+                const { notifyConversationMembers } = require('./telegramBot');
+                notifyConversationMembers(conversationId, userId, sender.name || sender.username || 'Someone', content.trim()).then(() => {
+                    console.log(`[Socket] telegram notifications dispatched successfully`);
+                }).catch((err) => {
+                    console.error('Failed to dispatch telegram notifications:', err);
+                });
             }
             catch (err) {
                 console.error('send_message error', err);

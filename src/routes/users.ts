@@ -41,7 +41,7 @@ router.get('/search', async (req: Request, res: Response, next: NextFunction) =>
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, name, email, username, wallet_address, telegram_username FROM users WHERE id = $1',
+      'SELECT id, name, email, username, telegram_username FROM users WHERE id = $1',
       [userId(req)],
     );
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });

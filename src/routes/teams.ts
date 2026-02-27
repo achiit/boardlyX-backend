@@ -205,6 +205,7 @@ router.get('/:id/tasks', async (req: Request, res: Response, next: NextFunction)
 
 router.post('/:id/tasks', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    console.log('[DEBUG] Task Create Request Body:', req.body);
     const team = await teamRepo.getTeamById(req.params.id);
     if (!team) return res.status(404).json({ error: 'Team not found' });
     const isMember = await teamRepo.isTeamMember(team.id, userId(req));
@@ -275,6 +276,7 @@ router.get('/:id/tasks/:taskId', async (req: Request, res: Response, next: NextF
 
 router.put('/:id/tasks/:taskId', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    console.log('[DEBUG] Task Update Request Body:', req.body);
     const isMember = await teamRepo.isTeamMember(req.params.id, userId(req));
     if (!isMember) return res.status(403).json({ error: 'Not a member' });
 

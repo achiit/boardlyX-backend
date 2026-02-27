@@ -100,10 +100,11 @@ export async function createMessage(
     content: string,
     mediaType?: string | null,
     mediaData?: string | null,
+    replyToId?: string | null,
 ) {
     const { rows } = await pool.query(
-        `INSERT INTO messages (conversation_id, sender_id, content, media_type, media_data) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [conversationId, senderId, content || '', mediaType || null, mediaData || null],
+        `INSERT INTO messages (conversation_id, sender_id, content, media_type, media_data, reply_to_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [conversationId, senderId, content || '', mediaType || null, mediaData || null, replyToId || null],
     );
     return rows[0];
 }

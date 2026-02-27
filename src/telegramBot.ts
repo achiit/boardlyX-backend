@@ -155,3 +155,49 @@ export async function notifyConversationMembers(
         console.error('Error notifying conversation members via Telegram:', err);
     }
 }
+
+/**
+ * Sends a notification to all members of a team (except the sender) who have linked their Telegram account
+ */
+export async function notifyTeamMembersOfTask(
+    teamId: string,
+    teamName: string,
+    senderId: string,
+    senderName: string,
+    taskTitle: string
+) {
+    if (!bot) {
+        console.warn('notifyTeamMembersOfTask: Bot not initialized');
+        return;
+    }
+
+    try {
+        console.log(`[Telegram] Notifying members for new task in team: ${teamId}, Sender: ${senderId}`);
+        const { rows } = await pool.query(
+            `
+      SELECT u.telegram_chat_id 
+      FROM team_members tm
+      JOIN users u ON tm.user_id = u.id
+      WHERE tm.team_id = $1 
+        AND tm.user_id != $2 
+        AND u.telegram_chat_id IS NOT NULL
+      `,
+            [teamId, senderId]
+        );
+
+        console.log(`[Telegram] Found ${rows.length} users to notify for new task`);
+
+        for (const row of rows) {
+            const chatId = row.telegram_chat_id;
+            if (chatId) {
+                const messageText = `🆕 New Task created in *${teamName}* by ${senderName}:\n\n*${taskTitle}*`;
+                console.log(`[Telegram] Sending new task notification to Chat ID: ${chatId}`);
+                bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' }).catch(err => {
+                    console.error(`Failed to send telegram task notification to chat ID ${chatId}:`, err);
+                });
+            }
+        }
+    } catch (err) {
+        console.error('Error notifying team members of task via Telegram:', err);
+    }
+}

@@ -118,7 +118,8 @@ export async function notifyConversationMembers(
     conversationId: string,
     senderId: string,
     senderName: string,
-    content: string
+    content: string,
+    excludeIds: string[] = []
 ) {
     if (!bot) {
         console.warn('notifyConversationMembers: Bot not initialized');
@@ -129,7 +130,7 @@ export async function notifyConversationMembers(
         console.log(`[Telegram] Notifying members for conversation: ${conversationId}, Sender: ${senderId}`);
         const { rows } = await pool.query(
             `
-      SELECT u.telegram_chat_id 
+      SELECT u.id as user_id, u.telegram_chat_id 
       FROM conversation_members cm
       JOIN users u ON cm.user_id = u.id
       WHERE cm.conversation_id = $1 
@@ -139,9 +140,11 @@ export async function notifyConversationMembers(
             [conversationId, senderId]
         );
 
-        console.log(`[Telegram] Found ${rows.length} users to notify`);
+        console.log(`[Telegram] Found ${rows.length} users to potentially notify`);
 
         for (const row of rows) {
+            if (excludeIds.includes(row.user_id)) continue;
+
             const chatId = row.telegram_chat_id;
             if (chatId) {
                 const messageText = `New message from ${senderName}:\n${content}`;
@@ -199,5 +202,95 @@ export async function notifyTeamMembersOfTask(
         }
     } catch (err) {
         console.error('Error notifying team members of task via Telegram:', err);
+    }
+}
+
+/**
+ * Targeted notification for mentions
+ * Returns the list of UUIDs that were successfully found and notified
+ */
+export async function notifyMentionedUsernames(
+    usernames: string[],
+    conversationId: string,
+    senderName: string,
+    content: string
+): Promise<string[]> {
+    if (!bot || usernames.length === 0) return [];
+
+    try {
+        // Find users in the conversation who have these usernames and have telegram linked
+        const { rows } = await pool.query(
+            `
+      SELECT u.id as user_id, u.telegram_chat_id 
+      FROM conversation_members cm
+      JOIN users u ON cm.user_id = u.id
+      WHERE cm.conversation_id = $1 
+        AND u.username = ANY($2::text[])
+        AND u.telegram_chat_id IS NOT NULL
+      `,
+            [conversationId, usernames]
+        );
+
+        const notifiedIds: string[] = [];
+
+        for (const row of rows) {
+            const chatId = row.telegram_chat_id;
+            if (chatId) {
+                const messageText = `🔔 You were mentioned by ${senderName}:\n${content}`;
+                bot.sendMessage(chatId, messageText).catch(err => {
+                    console.error(`Failed to send targeted mention ping to chat ID ${chatId}:`, err);
+                });
+                notifiedIds.push(row.user_id);
+            }
+        }
+
+        return notifiedIds;
+    } catch (err) {
+        console.error('Error sending mention notifications:', err);
+        return [];
+    }
+}
+
+/**
+ * Targeted notification for replies
+ * Returns the UUID of the replied user if they were found and notified
+ */
+export async function notifyRepliedUser(
+    replyToMessageId: string,
+    senderName: string,
+    content: string
+): Promise<string | null> {
+    if (!bot) return null;
+
+    try {
+        // Find the original message author
+        const { rows } = await pool.query(
+            `
+      SELECT u.id as user_id, u.telegram_chat_id 
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.id = $1 
+        AND u.telegram_chat_id IS NOT NULL
+      `,
+            [replyToMessageId]
+        );
+
+        if (rows.length === 0) return null;
+
+        const row = rows[0];
+        const chatId = row.telegram_chat_id;
+
+        if (chatId) {
+            const messageText = `💬 ${senderName} replied to your message:\n${content}`;
+            bot.sendMessage(chatId, messageText).catch(err => {
+                console.error(`Failed to send targeted reply ping to chat ID ${chatId}:`, err);
+            });
+            return row.user_id;
+        }
+
+        return null;
+    } catch (err) {
+        console.error('Error sending reply notification:', err);
+        return null;
     }
 }

@@ -8,6 +8,18 @@ export const bot = token ? new TelegramBot(token, { polling: true }) : null;
 const waitingForUsername = new Map<number, boolean>();
 
 if (bot) {
+    // Graceful shutdown to prevent ETELEGRAM 409 Conflict when ts-node-dev restarts
+    const stopBot = async () => {
+        try {
+            await bot.stopPolling({ cancel: true });
+        } catch (err) {
+            // Ignore errors during shutdown
+        }
+    };
+    process.once('SIGINT', stopBot);
+    process.once('SIGTERM', stopBot);
+    process.once('SIGUSR2', stopBot);
+
     // Helper function to handle the database linking logic
     const linkTelegramAccount = async (chatId: number, boardlyxIdentifier: string, telegramUsername: string | null) => {
         try {
@@ -57,6 +69,24 @@ if (bot) {
         // They provided a payload (e.g., via deep link)
         waitingForUsername.delete(chatId); // Clear state just in case
         await linkTelegramAccount(chatId, boardlyxIdentifier, telegramUsername);
+    });
+
+    bot.onText(/\/unlink/, async (msg) => {
+        const chatId = msg.chat.id;
+        try {
+            const result = await pool.query(
+                'UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL WHERE telegram_chat_id = $1 RETURNING id',
+                [chatId.toString()]
+            );
+            if (result.rowCount && result.rowCount > 0) {
+                bot.sendMessage(chatId, 'Your Telegram account has been successfully unlinked from BoardlyX.');
+            } else {
+                bot.sendMessage(chatId, 'This Telegram account is not currently linked to any BoardlyX profile.');
+            }
+        } catch (err) {
+            console.error('Error unlinking telegram account:', err);
+            bot.sendMessage(chatId, 'An error occurred while unlinking your account. Please try again later.');
+        }
     });
 
     // Listen to all messages

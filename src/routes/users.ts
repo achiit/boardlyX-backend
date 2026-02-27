@@ -66,4 +66,17 @@ router.post('/me/telegram', async (req: Request, res: Response, next: NextFuncti
   }
 });
 
+router.delete('/me/telegram', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await pool.query(
+      'UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL WHERE id = $1',
+      [userId(req)]
+    );
+    res.json({ success: true, message: 'Telegram account unlinked successfully' });
+  } catch (err) {
+    console.error('Failed to unlink telegram account', err);
+    next(err);
+  }
+});
+
 export default router;

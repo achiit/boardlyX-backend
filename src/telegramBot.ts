@@ -167,7 +167,8 @@ export async function notifyTeamMembersOfTask(
     teamName: string,
     senderId: string,
     senderName: string,
-    taskTitle: string
+    taskTitle: string,
+    assigneeIds: string[] = []
 ) {
     if (!bot) {
         console.warn('notifyTeamMembersOfTask: Bot not initialized');
@@ -178,7 +179,7 @@ export async function notifyTeamMembersOfTask(
         console.log(`[Telegram] Notifying members for new task in team: ${teamId}, Sender: ${senderId}`);
         const { rows } = await pool.query(
             `
-      SELECT u.telegram_chat_id 
+      SELECT u.id as user_id, u.telegram_chat_id 
       FROM team_members tm
       JOIN users u ON tm.user_id = u.id
       WHERE tm.team_id = $1 
@@ -193,7 +194,11 @@ export async function notifyTeamMembersOfTask(
         for (const row of rows) {
             const chatId = row.telegram_chat_id;
             if (chatId) {
-                const messageText = `🆕 New Task created in *${teamName}* by ${senderName}:\n\n*${taskTitle}*`;
+                const isAssigned = assigneeIds.includes(row.user_id);
+                const messageText = isAssigned
+                    ? `🆕 New Task **assigned to you** in *${teamName}* by ${senderName}:\n\n*${taskTitle}*`
+                    : `🆕 New Task created in *${teamName}* by ${senderName}:\n\n*${taskTitle}*`;
+
                 console.log(`[Telegram] Sending new task notification to Chat ID: ${chatId}`);
                 bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' }).catch(err => {
                     console.error(`Failed to send telegram task notification to chat ID ${chatId}:`, err);
@@ -202,6 +207,50 @@ export async function notifyTeamMembersOfTask(
         }
     } catch (err) {
         console.error('Error notifying team members of task via Telegram:', err);
+    }
+}
+
+/**
+ * Sends a notification to team members when a task is updated
+ */
+export async function notifyTaskUpdated(
+    teamId: string,
+    teamName: string,
+    senderId: string,
+    senderName: string,
+    taskTitle: string,
+    updatesDescription: string,
+    assigneeIds: string[] = []
+) {
+    if (!bot) return;
+
+    try {
+        const { rows } = await pool.query(
+            `
+      SELECT u.id as user_id, u.telegram_chat_id 
+      FROM team_members tm
+      JOIN users u ON tm.user_id = u.id
+      WHERE tm.team_id = $1 
+        AND tm.user_id != $2 
+        AND u.telegram_chat_id IS NOT NULL
+      `,
+            [teamId, senderId]
+        );
+
+        for (const row of rows) {
+            const chatId = row.telegram_chat_id;
+            if (chatId) {
+                const isAssigned = assigneeIds.includes(row.user_id);
+                const assignedText = isAssigned ? ` (Assigned to you)` : ``;
+                const messageText = `📝 Task *${taskTitle}*${assignedText} was updated by ${senderName} in *${teamName}*.\n\n*Updates:*\n${updatesDescription}`;
+
+                bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' }).catch(err => {
+                    console.error(`Failed to send telegram task update to chat ID ${chatId}:`, err);
+                });
+            }
+        }
+    } catch (err) {
+        console.error('Error sending task update notification:', err);
     }
 }
 

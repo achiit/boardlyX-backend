@@ -242,9 +242,9 @@ export async function notifyTaskUpdated(
             if (chatId) {
                 const isAssigned = assigneeIds.includes(row.user_id);
                 const assignedText = isAssigned ? ` (Assigned to you)` : ``;
-                const messageText = `📝 Task *${taskTitle}*${assignedText} was updated by ${senderName} in *${teamName}*.\n\n*Updates:*\n${updatesDescription}`;
+                const messageText = `📝 Task "${taskTitle}"${assignedText} was updated by ${senderName} in ${teamName}.\n\nUpdates:\n${updatesDescription}`;
 
-                bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' }).catch(err => {
+                bot.sendMessage(chatId, messageText).catch(err => {
                     console.error(`Failed to send telegram task update to chat ID ${chatId}:`, err);
                 });
             }

@@ -59,7 +59,7 @@ export async function getRecord(index: number): Promise<OnChainRecord> {
 
 export async function findRecordByTaskHash(
   taskHash: string,
-  userWallet?: string,
+
 ): Promise<{ verified: boolean; blockTimestamp?: number; transactionHash?: string; index?: number }> {
   const total = await getTotalRecords();
   const totalNum = Number(total);
@@ -67,7 +67,7 @@ export async function findRecordByTaskHash(
   for (let i = 0; i < totalNum; i++) {
     const record = await getRecord(i);
     if (record.taskHash.toLowerCase() !== taskHash.toLowerCase()) continue;
-    if (userWallet && record.user.toLowerCase() !== userWallet.toLowerCase()) continue;
+
     return {
       verified: true,
       blockTimestamp: Number(record.timestamp),

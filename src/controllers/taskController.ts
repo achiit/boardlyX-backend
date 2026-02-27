@@ -111,8 +111,7 @@ export async function storeOnChain(req: Request, res: Response) {
 
 export async function verifyTask(req: Request, res: Response) {
   const userId = getUserId(req);
-  const userWallet = (req as any).user?.walletAddress ?? req.query.walletAddress as string | undefined;
-  const result = await taskService.verifyTask(req.params.id, userId, userWallet);
+  const result = await taskService.verifyTask(req.params.id, userId);
   return res.json(result);
 }
 

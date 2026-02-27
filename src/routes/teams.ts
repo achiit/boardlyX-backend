@@ -226,6 +226,14 @@ router.post('/:id/tasks', async (req: Request, res: Response, next: NextFunction
     }
 
     const assignees = await taskRepo.getTaskAssignees(task.id);
+
+    // Notify team members via Telegram
+    const { notifyTeamMembersOfTask } = require('../telegramBot');
+    const senderName = (req as any).user.name || (req as any).user.username || 'A team member';
+    notifyTeamMembersOfTask(team.id, team.name, userId(req), senderName, title).catch((err: any) => {
+      console.error('Failed to dispatch telegram task notifications:', err);
+    });
+
     res.status(201).json({ ...task, assignees });
   } catch (err) { next(err); }
 });

@@ -49,7 +49,7 @@ export function initSocket(httpServer: HttpServer) {
         }
 
         // ── Send Message ──
-        socket.on('send_message', async (data: { conversationId: string; content: string }, callback?: Function) => {
+        socket.on('send_message', async (data: { conversationId: string; content: string; replyToId?: string }, callback?: Function) => {
             console.log(`[Socket] received send_message from ${userId} for conversation ${data?.conversationId}`);
             try {
                 const { conversationId, content } = data;
@@ -67,7 +67,7 @@ export function initSocket(httpServer: HttpServer) {
 
                 // Save to DB
                 console.log(`[Socket] saving message to DB...`);
-                const message = await chatRepo.createMessage(conversationId, userId, content.trim());
+                const message = await chatRepo.createMessage(conversationId, userId, content.trim(), null, null, data.replyToId);
 
                 // Fetch sender info
                 const { pool } = require('./db');

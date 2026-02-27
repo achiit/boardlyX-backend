@@ -160,8 +160,8 @@ export async function initDb() {
     );
   `);
   await pool.query(`create index if not exists idx_messages_conv on messages(conversation_id, created_at desc);`);
-  // Migration: add media columns to existing messages table
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type text;`).catch(() => { });
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_data text;`).catch(() => { });
   await pool.query(`ALTER TABLE messages ALTER COLUMN content DROP NOT NULL;`).catch(() => { });
+  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id uuid references messages(id) on delete set null;`).catch(() => { });
 }

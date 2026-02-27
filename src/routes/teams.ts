@@ -226,11 +226,12 @@ router.post('/:id/tasks', async (req: Request, res: Response, next: NextFunction
     }
 
     const assignees = await taskRepo.getTaskAssignees(task.id);
+    const assigneeIdsFinal = assignees.map(a => a.user_id);
 
     // Notify team members via Telegram
     const { notifyTeamMembersOfTask } = require('../telegramBot');
     const senderName = (req as any).user.name || (req as any).user.username || 'A team member';
-    notifyTeamMembersOfTask(team.id, team.name, userId(req), senderName, title).catch((err: any) => {
+    notifyTeamMembersOfTask(team.id, team.name, userId(req), senderName, title, assigneeIdsFinal).catch((err: any) => {
       console.error('Failed to dispatch telegram task notifications:', err);
     });
 
@@ -276,15 +277,46 @@ router.put('/:id/tasks/:taskId', async (req: Request, res: Response, next: NextF
   try {
     const isMember = await teamRepo.isTeamMember(req.params.id, userId(req));
     if (!isMember) return res.status(403).json({ error: 'Not a member' });
+
+    // Fetch original to detect changes
+    const originalTask = await taskRepo.getTeamTaskById(req.params.taskId, req.params.id);
+
     const { title, description, status, priority, boardColumn, boardOrder, assigneeIds } = req.body;
     const updated = await taskRepo.updateTeamTask(req.params.taskId, req.params.id, {
       title, description, status, priority, boardColumn, boardOrder,
     });
+
     if (!updated) return res.status(404).json({ error: 'Task not found' });
+
     if (assigneeIds && Array.isArray(assigneeIds)) {
       await taskRepo.setTaskAssignees(req.params.taskId, assigneeIds);
     }
+
     const assignees = await taskRepo.getTaskAssignees(updated.id);
+    const assigneeIdsFinal = assignees.map(a => a.user_id);
+
+    // Track what changed for the notification
+    const updates: string[] = [];
+    if (originalTask) {
+      if (title && title !== originalTask.title) updates.push(`- Title changed to "${title}"`);
+      if (description !== undefined && description !== originalTask.description) updates.push(`- Description was updated`);
+      if (status && status !== originalTask.status) updates.push(`- Status changed to "${status}"`);
+      if (priority && priority !== originalTask.priority) updates.push(`- Priority changed to ${priority}`);
+      if (boardColumn && boardColumn !== originalTask.board_column) updates.push(`- Moved to column "${boardColumn}"`);
+      if (assigneeIds) updates.push(`- Assignees were modified`);
+    }
+
+    if (updates.length > 0) {
+      const team = await teamRepo.getTeamById(req.params.id);
+      if (team) {
+        const { notifyTaskUpdated } = require('../telegramBot');
+        const senderName = (req as any).user.name || (req as any).user.username || 'A team member';
+        notifyTaskUpdated(team.id, team.name, userId(req), senderName, updated.title, updates.join('\n'), assigneeIdsFinal).catch((err: any) => {
+          console.error('Failed to dispatch telegram task update notifications:', err);
+        });
+      }
+    }
+
     res.json({ ...updated, assignees });
   } catch (err) { next(err); }
 });
@@ -305,8 +337,23 @@ router.put('/:id/tasks/:taskId/assignees', async (req: Request, res: Response, n
     if (!isMember) return res.status(403).json({ error: 'Not a member' });
     const { assigneeIds } = req.body;
     if (!Array.isArray(assigneeIds)) return res.status(400).json({ error: 'assigneeIds must be an array' });
+
     await taskRepo.setTaskAssignees(req.params.taskId, assigneeIds);
     const assignees = await taskRepo.getTaskAssignees(req.params.taskId);
+    const assigneeIdsFinal = assignees.map(a => a.user_id);
+
+    // Notification for specific assignee modifications
+    const task = await taskRepo.getTeamTaskById(req.params.taskId, req.params.id);
+    const team = await teamRepo.getTeamById(req.params.id);
+
+    if (task && team) {
+      const { notifyTaskUpdated } = require('../telegramBot');
+      const senderName = (req as any).user.name || (req as any).user.username || 'A team member';
+      notifyTaskUpdated(team.id, team.name, userId(req), senderName, task.title, '- Assignees were modified', assigneeIdsFinal).catch((err: any) => {
+        console.error('Failed to dispatch telegram task update notifications:', err);
+      });
+    }
+
     res.json(assignees);
   } catch (err) { next(err); }
 });

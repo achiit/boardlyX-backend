@@ -280,6 +280,8 @@ router.put('/:id/tasks/:taskId', async (req: Request, res: Response, next: NextF
 
     // Fetch original to detect changes
     const originalTask = await taskRepo.getTeamTaskById(req.params.taskId, req.params.id);
+    const originalAssigneesRows = await taskRepo.getTaskAssignees(req.params.taskId);
+    const originalAssigneeIds = originalAssigneesRows.map(a => a.user_id).sort().join(',');
 
     const { title, description, status, priority, boardColumn, boardOrder, assigneeIds } = req.body;
     const updated = await taskRepo.updateTeamTask(req.params.taskId, req.params.id, {
@@ -294,6 +296,7 @@ router.put('/:id/tasks/:taskId', async (req: Request, res: Response, next: NextF
 
     const assignees = await taskRepo.getTaskAssignees(updated.id);
     const assigneeIdsFinal = assignees.map(a => a.user_id);
+    const newAssigneeIdsStr = [...assigneeIdsFinal].sort().join(',');
 
     // Track what changed for the notification
     const updates: string[] = [];
@@ -303,7 +306,7 @@ router.put('/:id/tasks/:taskId', async (req: Request, res: Response, next: NextF
       if (status && status !== originalTask.status) updates.push(`- Status changed to "${status}"`);
       if (priority && priority !== originalTask.priority) updates.push(`- Priority changed to ${priority}`);
       if (boardColumn && boardColumn !== originalTask.board_column) updates.push(`- Moved to column "${boardColumn}"`);
-      if (assigneeIds) updates.push(`- Assignees were modified`);
+      if (assigneeIds && originalAssigneeIds !== newAssigneeIdsStr) updates.push(`- Assignees were modified`);
     }
 
     if (updates.length > 0) {
@@ -338,20 +341,26 @@ router.put('/:id/tasks/:taskId/assignees', async (req: Request, res: Response, n
     const { assigneeIds } = req.body;
     if (!Array.isArray(assigneeIds)) return res.status(400).json({ error: 'assigneeIds must be an array' });
 
+    const originalAssigneesRows = await taskRepo.getTaskAssignees(req.params.taskId);
+    const originalAssigneeIds = originalAssigneesRows.map((a: any) => a.user_id).sort().join(',');
+
     await taskRepo.setTaskAssignees(req.params.taskId, assigneeIds);
     const assignees = await taskRepo.getTaskAssignees(req.params.taskId);
-    const assigneeIdsFinal = assignees.map(a => a.user_id);
+    const assigneeIdsFinal = assignees.map((a: any) => a.user_id);
+    const newAssigneeIdsStr = [...assigneeIdsFinal].sort().join(',');
 
-    // Notification for specific assignee modifications
-    const task = await taskRepo.getTeamTaskById(req.params.taskId, req.params.id);
-    const team = await teamRepo.getTeamById(req.params.id);
+    if (originalAssigneeIds !== newAssigneeIdsStr) {
+      // Notification for specific assignee modifications
+      const task = await taskRepo.getTeamTaskById(req.params.taskId, req.params.id);
+      const team = await teamRepo.getTeamById(req.params.id);
 
-    if (task && team) {
-      const { notifyTaskUpdated } = require('../telegramBot');
-      const senderName = (req as any).user.name || (req as any).user.username || 'A team member';
-      notifyTaskUpdated(team.id, team.name, userId(req), senderName, task.title, '- Assignees were modified', assigneeIdsFinal).catch((err: any) => {
-        console.error('Failed to dispatch telegram task update notifications:', err);
-      });
+      if (task && team) {
+        const { notifyTaskUpdated } = require('../telegramBot');
+        const senderName = (req as any).user.name || (req as any).user.username || 'A team member';
+        notifyTaskUpdated(team.id, team.name, userId(req), senderName, task.title, '• Assignees were modified', assigneeIdsFinal).catch((err: any) => {
+          console.error('Failed to dispatch telegram task update notifications:', err);
+        });
+      }
     }
 
     res.json(assignees);

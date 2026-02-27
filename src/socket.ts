@@ -82,6 +82,8 @@ export function initSocket(httpServer: HttpServer) {
                     sender: { id: sender.id, name: sender.name, username: sender.username },
                 };
 
+                const senderName = sender.name || sender.username || 'Someone';
+
                 // Broadcast to the conversation room
                 console.log(`[Socket] broadcasting message to room conv:${conversationId}`);
                 io.to(`conv:${conversationId}`).emit('new_message', fullMessage);
@@ -89,14 +91,47 @@ export function initSocket(httpServer: HttpServer) {
 
                 // Dispatch Telegram notifications
                 console.log(`[Socket] triggering telegram notifications...`);
-                const { notifyConversationMembers } = require('./telegramBot');
+                const {
+                    notifyConversationMembers,
+                    notifyMentionedUsernames,
+                    notifyRepliedUser
+                } = require('./telegramBot');
+
+                const excludeIds: string[] = [];
+
+                // 1. Reply Notification
+                if (data.replyToId) {
+                    const repliedUserId = await notifyRepliedUser(data.replyToId, senderName, content.trim());
+                    if (repliedUserId) {
+                        excludeIds.push(repliedUserId);
+                    }
+                }
+
+                // 2. Mention Notifications
+                // Matches @username (alphanumeric and underscores)
+                const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+                const matches = [...content.matchAll(mentionRegex)];
+                const mentionedUsernames = matches.map(m => m[1]);
+
+                if (mentionedUsernames.length > 0) {
+                    const notifiedIds = await notifyMentionedUsernames(
+                        mentionedUsernames,
+                        conversationId,
+                        senderName,
+                        content.trim()
+                    );
+                    excludeIds.push(...notifiedIds);
+                }
+
+                // 3. Generic Group Notification (excluding already targeted users)
                 notifyConversationMembers(
                     conversationId,
                     userId,
-                    sender.name || sender.username || 'Someone',
-                    content.trim()
+                    senderName,
+                    content.trim(),
+                    excludeIds
                 ).then(() => {
-                    console.log(`[Socket] telegram notifications dispatched successfully`);
+                    console.log(`[Socket] telegram notifications dispatched successfully (Targeted: ${excludeIds.length})`);
                 }).catch((err: any) => {
                     console.error('Failed to dispatch telegram notifications:', err)
                 });

@@ -137,6 +137,7 @@ export async function initDb() {
       created_at timestamptz default now()
     );
   `);
+  await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pinned_message_id uuid;`).catch(() => { });
 
   await pool.query(`
     create table if not exists conversation_members (

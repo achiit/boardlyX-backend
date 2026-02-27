@@ -151,6 +151,47 @@ router.post('/conversations/:id/media', async (req: Request, res: Response) => {
     }
 });
 
+// Pin or unpin a message globally
+router.put('/conversations/:id/pin', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.userId;
+        const conversationId = req.params.id;
+        const { messageId } = req.body;
+
+        const member = await chatRepo.isMember(conversationId, userId);
+        if (!member) return res.status(403).json({ error: 'Not a member' });
+
+        let pinnedMessage = null;
+        if (messageId) {
+            const msg = await chatRepo.getMessageById(messageId);
+            if (!msg || msg.conversation_id !== conversationId) {
+                return res.status(404).json({ error: 'Message not found in this conversation' });
+            }
+            pinnedMessage = {
+                id: msg.id,
+                content: msg.content,
+                media_type: msg.media_type,
+                sender_id: msg.sender_id
+            };
+        }
+
+        await chatRepo.setPinnedMessage(conversationId, messageId || null);
+
+        const io = getIO();
+        if (io) {
+            io.to(`conv:${conversationId}`).emit('pinned_message_updated', {
+                conversationId,
+                pinnedMessage
+            });
+        }
+
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('PUT /pin error', err);
+        res.status(500).json({ error: 'Failed to pin message' });
+    }
+});
+
 // Get single conversation details
 router.get('/conversations/:id', async (req: Request, res: Response) => {
     try {

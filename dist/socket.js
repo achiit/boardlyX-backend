@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getIO = getIO;
 exports.initSocket = initSocket;
 exports.joinUserToConversation = joinUserToConversation;
+exports.leaveUserFromConversation = leaveUserFromConversation;
 const socket_io_1 = require("socket.io");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const config_1 = require("./config");
@@ -100,7 +101,7 @@ function initSocket(httpServer) {
                 }
                 // Save to DB
                 console.log(`[Socket] saving message to DB...`);
-                const message = await chatRepo.createMessage(conversationId, userId, content.trim());
+                const message = await chatRepo.createMessage(conversationId, userId, content.trim(), null, null, data.replyToId);
                 // Fetch sender info
                 const { pool } = require('./db');
                 const { rows } = await pool.query(`SELECT id, name, username FROM users WHERE id = $1`, [userId]);
@@ -109,15 +110,34 @@ function initSocket(httpServer) {
                     ...message,
                     sender: { id: sender.id, name: sender.name, username: sender.username },
                 };
+                const senderName = sender.name || sender.username || 'Someone';
                 // Broadcast to the conversation room
                 console.log(`[Socket] broadcasting message to room conv:${conversationId}`);
                 io.to(`conv:${conversationId}`).emit('new_message', fullMessage);
                 callback?.({ success: true, message: fullMessage });
                 // Dispatch Telegram notifications
                 console.log(`[Socket] triggering telegram notifications...`);
-                const { notifyConversationMembers } = require('./telegramBot');
-                notifyConversationMembers(conversationId, userId, sender.name || sender.username || 'Someone', content.trim()).then(() => {
-                    console.log(`[Socket] telegram notifications dispatched successfully`);
+                const { notifyConversationMembers, notifyMentionedUsernames, notifyRepliedUser } = require('./telegramBot');
+                const excludeIds = [];
+                // 1. Reply Notification
+                if (data.replyToId) {
+                    const repliedUserId = await notifyRepliedUser(data.replyToId, senderName, content.trim());
+                    if (repliedUserId) {
+                        excludeIds.push(repliedUserId);
+                    }
+                }
+                // 2. Mention Notifications
+                // Matches @username (alphanumeric and underscores)
+                const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+                const matches = [...content.matchAll(mentionRegex)];
+                const mentionedUsernames = matches.map(m => m[1]);
+                if (mentionedUsernames.length > 0) {
+                    const notifiedIds = await notifyMentionedUsernames(mentionedUsernames, conversationId, senderName, content.trim());
+                    excludeIds.push(...notifiedIds);
+                }
+                // 3. Generic Group Notification (excluding already targeted users)
+                notifyConversationMembers(conversationId, userId, senderName, content.trim(), excludeIds).then(() => {
+                    console.log(`[Socket] telegram notifications dispatched successfully (Targeted: ${excludeIds.length})`);
                 }).catch((err) => {
                     console.error('Failed to dispatch telegram notifications:', err);
                 });
@@ -158,6 +178,16 @@ function joinUserToConversation(userId, conversationId) {
     for (const [, socket] of sockets) {
         if (socket.userId === userId) {
             socket.join(`conv:${conversationId}`);
+        }
+    }
+}
+function leaveUserFromConversation(userId, conversationId) {
+    const sockets = io?.sockets?.sockets;
+    if (!sockets)
+        return;
+    for (const [, socket] of sockets) {
+        if (socket.userId === userId) {
+            socket.leave(`conv:${conversationId}`);
         }
     }
 }

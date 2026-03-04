@@ -166,7 +166,7 @@ async function verifyTask(id, userId, userWallet) {
             error: !row ? 'Task not found' : 'Task has no hash',
         };
     }
-    const result = await blockchain.findRecordByTaskHash(row.task_hash, userWallet);
+    const result = await blockchain.findRecordByTaskHash(row.task_hash);
     if (!result.verified) {
         return {
             verified: false,

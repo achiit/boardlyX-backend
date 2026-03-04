@@ -8,7 +8,9 @@ exports.getConversationById = getConversationById;
 exports.findGroupConversation = findGroupConversation;
 exports.findDmConversation = findDmConversation;
 exports.shareTeam = shareTeam;
+exports.setPinnedMessage = setPinnedMessage;
 exports.createMessage = createMessage;
+exports.getMessageById = getMessageById;
 exports.getMessages = getMessages;
 exports.isMember = isMember;
 exports.backfillTeamGroupChats = backfillTeamGroupChats;
@@ -33,7 +35,8 @@ async function getConversationsByUser(userId) {
             JOIN users u ON u.id = cm2.user_id 
             WHERE cm2.conversation_id = c.id) AS members,
             (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
-            (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_at
+            (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_at,
+            (SELECT json_build_object('id', m.id, 'content', m.content, 'media_type', m.media_type, 'sender_id', m.sender_id) FROM messages m WHERE m.id = c.pinned_message_id) AS pinned_message
      FROM conversations c
      JOIN conversation_members cm ON cm.conversation_id = c.id
      WHERE cm.user_id = $1
@@ -49,7 +52,8 @@ async function getConversationById(conversationId) {
               'id', u.id, 'name', u.name, 'username', u.username, 'email', u.email
             )) FROM conversation_members cm
             JOIN users u ON u.id = cm.user_id
-            WHERE cm.conversation_id = c.id) AS members
+            WHERE cm.conversation_id = c.id) AS members,
+            (SELECT json_build_object('id', m.id, 'content', m.content, 'media_type', m.media_type, 'sender_id', m.sender_id) FROM messages m WHERE m.id = c.pinned_message_id) AS pinned_message
      FROM conversations c WHERE c.id = $1`, [conversationId]);
     return rows[0] || null;
 }
@@ -72,10 +76,21 @@ async function shareTeam(userA, userB) {
      LIMIT 1`, [userA, userB]);
     return rows.length > 0;
 }
+async function setPinnedMessage(conversationId, messageId) {
+    await db_1.pool.query(`UPDATE conversations SET pinned_message_id = $1 WHERE id = $2`, [messageId, conversationId]);
+}
 // ── Messages ──
-async function createMessage(conversationId, senderId, content, mediaType, mediaData) {
-    const { rows } = await db_1.pool.query(`INSERT INTO messages (conversation_id, sender_id, content, media_type, media_data) VALUES ($1, $2, $3, $4, $5) RETURNING *`, [conversationId, senderId, content || '', mediaType || null, mediaData || null]);
+async function createMessage(conversationId, senderId, content, mediaType, mediaData, replyToId) {
+    const { rows } = await db_1.pool.query(`INSERT INTO messages (conversation_id, sender_id, content, media_type, media_data, reply_to_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`, [conversationId, senderId, content || '', mediaType || null, mediaData || null, replyToId || null]);
     return rows[0];
+}
+async function getMessageById(messageId) {
+    const { rows } = await db_1.pool.query(`SELECT m.*, 
+            json_build_object('id', u.id, 'name', u.name, 'username', u.username) AS sender
+     FROM messages m
+     JOIN users u ON u.id = m.sender_id
+     WHERE m.id = $1 LIMIT 1`, [messageId]);
+    return rows[0] || null;
 }
 async function getMessages(conversationId, limit = 50, before) {
     const params = [conversationId, limit];

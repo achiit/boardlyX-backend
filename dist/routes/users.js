@@ -37,7 +37,7 @@ router.get('/search', async (req, res, next) => {
 });
 router.get('/me', async (req, res, next) => {
     try {
-        const { rows } = await db_1.pool.query('SELECT id, name, email, username, wallet_address, telegram_username FROM users WHERE id = $1', [userId(req)]);
+        const { rows } = await db_1.pool.query('SELECT id, name, email, username, telegram_username FROM users WHERE id = $1', [userId(req)]);
         if (!rows[0])
             return res.status(404).json({ error: 'User not found' });
         res.json(rows[0]);
@@ -55,6 +55,16 @@ router.post('/me/telegram', async (req, res, next) => {
     }
     catch (err) {
         console.error('Failed to update telegram ID', err);
+        next(err);
+    }
+});
+router.delete('/me/telegram', async (req, res, next) => {
+    try {
+        await db_1.pool.query('UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL WHERE id = $1', [userId(req)]);
+        res.json({ success: true, message: 'Telegram account unlinked successfully' });
+    }
+    catch (err) {
+        console.error('Failed to unlink telegram account', err);
         next(err);
     }
 });

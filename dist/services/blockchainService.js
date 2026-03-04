@@ -50,14 +50,12 @@ async function getRecord(index) {
     const r = result;
     return { user: r.user, taskHash: r.taskHash, timestamp: r.timestamp };
 }
-async function findRecordByTaskHash(taskHash, userWallet) {
+async function findRecordByTaskHash(taskHash) {
     const total = await getTotalRecords();
     const totalNum = Number(total);
     for (let i = 0; i < totalNum; i++) {
         const record = await getRecord(i);
         if (record.taskHash.toLowerCase() !== taskHash.toLowerCase())
-            continue;
-        if (userWallet && record.user.toLowerCase() !== userWallet.toLowerCase())
             continue;
         return {
             verified: true,

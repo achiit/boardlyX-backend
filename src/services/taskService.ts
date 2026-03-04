@@ -174,7 +174,7 @@ export async function verifyTask(id: string, userId: string, userWallet?: string
     };
   }
 
-  const result = await blockchain.findRecordByTaskHash(row.task_hash, userWallet);
+  const result = await blockchain.findRecordByTaskHash(row.task_hash);
   if (!result.verified) {
     return {
       verified: false,

@@ -150,8 +150,7 @@ async function storeOnChain(req, res) {
 }
 async function verifyTask(req, res) {
     const userId = getUserId(req);
-    const userWallet = req.user?.walletAddress ?? req.query.walletAddress;
-    const result = await taskService.verifyTask(req.params.id, userId, userWallet);
+    const result = await taskService.verifyTask(req.params.id, userId);
     return res.json(result);
 }
 async function myBoardTasks(req, res) {

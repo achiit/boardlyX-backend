@@ -1,0 +1,96 @@
+Frontend Prompt: Implement Group Chat Member Management (Admin Controls)
+
+Overview
+- Implement add/remove members in team group conversations.
+- Enforce permissions: only team owner/admin can add/remove.
+- Update the UI in real time via socket events.
+
+REST API
+- Add Member
+  - POST /chat/conversations/:conversationId/members
+  - Body: { "userId": "<USER_ID>" }
+  - Success: 201 { "ok": true }
+  - Errors: 
+    - 400 { "error": "userId required" }
+    - 404 { "error": "Group conversation not found" }
+    - 403 { "error": "Only owner/admin can add members" }
+    - 400 { "error": "User is not a member of the team" }
+
+- Remove Member
+  - DELETE /chat/conversations/:conversationId/members/:userId
+  - Success: 200 { "ok": true }
+  - Errors:
+    - 404 { "error": "Group conversation not found" }
+    - 403 { "error": "Only owner/admin can remove members" }
+    - 403 { "error": "Cannot remove the team owner" }
+    - 404 { "error": "User is not a conversation member" }
+
+- Get Conversation (with members)
+  - GET /chat/conversations/:conversationId
+  - Returns: 
+    {
+      "conversation": {
+        "id": "...",
+        "type": "group",
+        "name": "...",
+        "team_id": "...",
+        "members": [
+          { "id": "...", "name": "...", "username": "...", "email": "..." }
+        ],
+        "pinned_message": { "id": "...", "content": "...", "media_type": "...", "sender_id": "..." } | null
+      }
+    }
+
+Auth
+- All endpoints require Authorization: Bearer <JWT>.
+- Socket connects with handshake auth token and auto-joins conv rooms.
+
+Socket Events (listen and update UI)
+- member_added (room: conv:<conversationId>)
+  - Payload: { "conversationId": "<ID>", "userId": "<USER_ID>" }
+- member_removed (room: conv:<conversationId>)
+  - Payload: { "conversationId": "<ID>", "userId": "<USER_ID>" }
+
+Permissions Notes
+- Conversation must be type 'group' and linked to a team (team_id).
+- Caller must be team owner/admin.
+- Target user must be a team member to be added.
+- Owner cannot be removed.
+
+Frontend Tasks
+- Members List UI:
+  - Fetch conversation: GET /chat/conversations/:id.
+  - Render members with roles (owner/admin/member can be inferred by fetching team details if needed).
+  - Subscribe to member_added/member_removed; update list in real time.
+
+- Add Member Flow:
+  - Provide search/select of eligible team users (fetch team members via GET /api/teams/:teamId).
+  - POST /chat/conversations/:id/members with chosen userId.
+  - On success, optimistically append; also rely on member_added event.
+  - Handle error messages and show toasts.
+
+- Remove Member Flow:
+  - Show remove button for each member if current user role is owner/admin.
+  - DELETE /chat/conversations/:id/members/:userId.
+  - On success, optimistically remove; also rely on member_removed event.
+  - If current user is removed, navigate away from chat and stop listening to conv:<id>.
+
+Example Requests
+- Add member:
+  curl -X POST http://localhost:4000/chat/conversations/CONV_ID/members \
+    -H "Authorization: Bearer <JWT>" \
+    -H "Content-Type: application/json" \
+    -d '{"userId":"USER_ID"}'
+
+- Remove member:
+  curl -X DELETE http://localhost:4000/chat/conversations/CONV_ID/members/USER_ID \
+    -H "Authorization: Bearer <JWT)"
+
+- Get conversation:
+  curl http://localhost:4000/chat/conversations/CONV_ID \
+    -H "Authorization: Bearer <JWT>"
+
+UI Edge Cases
+- Adding an already present member is idempotent (backend tolerates it). Show a non-blocking notice.
+- Attempting to remove a non-member returns 404; show an error toast.
+- Attempting to remove owner returns 403; show an error toast.

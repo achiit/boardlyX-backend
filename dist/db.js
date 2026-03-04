@@ -126,6 +126,7 @@ async function initDb() {
       created_at timestamptz default now()
     );
   `);
+    await exports.pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pinned_message_id uuid;`).catch(() => { });
     await exports.pool.query(`
     create table if not exists conversation_members (
       conversation_id uuid not null references conversations(id) on delete cascade,
@@ -147,8 +148,8 @@ async function initDb() {
     );
   `);
     await exports.pool.query(`create index if not exists idx_messages_conv on messages(conversation_id, created_at desc);`);
-    // Migration: add media columns to existing messages table
     await exports.pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type text;`).catch(() => { });
     await exports.pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_data text;`).catch(() => { });
     await exports.pool.query(`ALTER TABLE messages ALTER COLUMN content DROP NOT NULL;`).catch(() => { });
+    await exports.pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id uuid references messages(id) on delete set null;`).catch(() => { });
 }

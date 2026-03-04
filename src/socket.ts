@@ -179,3 +179,13 @@ export function joinUserToConversation(userId: string, conversationId: string) {
         }
     }
 }
+
+export function leaveUserFromConversation(userId: string, conversationId: string) {
+    const sockets = io?.sockets?.sockets;
+    if (!sockets) return;
+    for (const [, socket] of sockets) {
+        if ((socket as any).userId === userId) {
+            socket.leave(`conv:${conversationId}`);
+        }
+    }
+}

@@ -37,6 +37,7 @@ const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
 const chatRepo = __importStar(require("../repositories/chatRepository"));
 const socket_1 = require("../socket");
+const teamRepo = __importStar(require("../repositories/teamRepository"));
 const router = (0, express_1.Router)();
 router.use(auth_1.authMiddleware);
 const MAX_MEDIA_SIZE = 2 * 1024 * 1024; // 2MB in bytes
@@ -162,6 +163,43 @@ router.post('/conversations/:id/media', async (req, res) => {
         res.status(500).json({ error: 'Failed to send media message' });
     }
 });
+// Pin or unpin a message globally
+router.put('/conversations/:id/pin', async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const conversationId = req.params.id;
+        const { messageId } = req.body;
+        const member = await chatRepo.isMember(conversationId, userId);
+        if (!member)
+            return res.status(403).json({ error: 'Not a member' });
+        let pinnedMessage = null;
+        if (messageId) {
+            const msg = await chatRepo.getMessageById(messageId);
+            if (!msg || msg.conversation_id !== conversationId) {
+                return res.status(404).json({ error: 'Message not found in this conversation' });
+            }
+            pinnedMessage = {
+                id: msg.id,
+                content: msg.content,
+                media_type: msg.media_type,
+                sender_id: msg.sender_id
+            };
+        }
+        await chatRepo.setPinnedMessage(conversationId, messageId || null);
+        const io = (0, socket_1.getIO)();
+        if (io) {
+            io.to(`conv:${conversationId}`).emit('pinned_message_updated', {
+                conversationId,
+                pinnedMessage
+            });
+        }
+        res.json({ ok: true });
+    }
+    catch (err) {
+        console.error('PUT /pin error', err);
+        res.status(500).json({ error: 'Failed to pin message' });
+    }
+});
 // Get single conversation details
 router.get('/conversations/:id', async (req, res) => {
     try {
@@ -176,6 +214,66 @@ router.get('/conversations/:id', async (req, res) => {
     catch (err) {
         console.error('GET /conversation error', err);
         res.status(500).json({ error: 'Failed to load conversation' });
+    }
+});
+// ── Group membership management (Admin/Owner only) ──
+router.post('/conversations/:id/members', async (req, res) => {
+    try {
+        const adminId = req.user.userId;
+        const conversationId = req.params.id;
+        const { userId } = req.body;
+        if (!userId)
+            return res.status(400).json({ error: 'userId required' });
+        const conv = await chatRepo.getConversationById(conversationId);
+        if (!conv || conv.type !== 'group' || !conv.team_id)
+            return res.status(404).json({ error: 'Group conversation not found' });
+        const role = await teamRepo.getMemberRole(conv.team_id, adminId);
+        if (!role || role === 'member')
+            return res.status(403).json({ error: 'Only owner/admin can add members' });
+        const isTeamMember = await teamRepo.isTeamMember(conv.team_id, userId);
+        if (!isTeamMember)
+            return res.status(400).json({ error: 'User is not a member of the team' });
+        await chatRepo.addMember(conversationId, userId);
+        const io = (0, socket_1.getIO)();
+        if (io) {
+            (0, socket_1.joinUserToConversation)(userId, conversationId);
+            io.to(`conv:${conversationId}`).emit('member_added', { conversationId, userId });
+        }
+        res.status(201).json({ ok: true });
+    }
+    catch (err) {
+        console.error('POST /members error', err);
+        res.status(500).json({ error: 'Failed to add member' });
+    }
+});
+router.delete('/conversations/:id/members/:userId', async (req, res) => {
+    try {
+        const adminId = req.user.userId;
+        const conversationId = req.params.id;
+        const targetUserId = req.params.userId;
+        const conv = await chatRepo.getConversationById(conversationId);
+        if (!conv || conv.type !== 'group' || !conv.team_id)
+            return res.status(404).json({ error: 'Group conversation not found' });
+        const role = await teamRepo.getMemberRole(conv.team_id, adminId);
+        if (!role || role === 'member')
+            return res.status(403).json({ error: 'Only owner/admin can remove members' });
+        const targetRole = await teamRepo.getMemberRole(conv.team_id, targetUserId);
+        if (targetRole === 'owner')
+            return res.status(403).json({ error: 'Cannot remove the team owner' });
+        const isMember = await chatRepo.isMember(conversationId, targetUserId);
+        if (!isMember)
+            return res.status(404).json({ error: 'User is not a conversation member' });
+        await chatRepo.removeMember(conversationId, targetUserId);
+        const io = (0, socket_1.getIO)();
+        if (io) {
+            (0, socket_1.leaveUserFromConversation)(targetUserId, conversationId);
+            io.to(`conv:${conversationId}`).emit('member_removed', { conversationId, userId: targetUserId });
+        }
+        res.json({ ok: true });
+    }
+    catch (err) {
+        console.error('DELETE /members error', err);
+        res.status(500).json({ error: 'Failed to remove member' });
     }
 });
 exports.default = router;

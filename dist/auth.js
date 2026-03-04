@@ -7,7 +7,6 @@ const express_1 = __importDefault(require("express"));
 const zod_1 = require("zod");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const viem_1 = require("viem");
 const config_1 = require("./config");
 const db_1 = require("./db");
 const router = express_1.default.Router();
@@ -87,93 +86,6 @@ router.post('/email/login', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 });
-// --- Wallet (Web3) auth using RainbowKit on the frontend ---
-const WalletNonceSchema = zod_1.z.object({
-    address: zod_1.z.string().min(1),
-});
-router.get('/wallet/nonce', async (req, res) => {
-    const parse = WalletNonceSchema.safeParse({ address: req.query.address });
-    if (!parse.success) {
-        return res.status(400).json({ error: 'address is required' });
-    }
-    const { address } = parse.data;
-    const nonce = crypto.randomUUID();
-    try {
-        await db_1.pool.query(`
-      insert into wallet_nonces (wallet_address, nonce)
-      values ($1, $2)
-      on conflict (wallet_address) do update
-      set nonce = excluded.nonce,
-          created_at = now()
-      `, [address.toLowerCase(), nonce]);
-        return res.json({ nonce });
-    }
-    catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[wallet/nonce]', err);
-        if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
-            return res.status(503).json({ error: 'Database connection issue. Please try again.' });
-        }
-        return res.status(500).json({ error: 'Internal server error' });
-    }
-});
-const WalletLoginSchema = zod_1.z.object({
-    address: zod_1.z.string().min(1),
-    signature: zod_1.z.string().min(1),
-});
-router.post('/wallet/login', async (req, res) => {
-    const parse = WalletLoginSchema.safeParse(req.body);
-    if (!parse.success) {
-        return res.status(400).json({ error: 'Invalid payload', details: parse.error.flatten() });
-    }
-    const { address, signature } = parse.data;
-    try {
-        const { rows } = await db_1.pool.query('select nonce from wallet_nonces where wallet_address = $1', [address.toLowerCase()]);
-        if (!rows[0]) {
-            return res.status(400).json({ error: 'No nonce for address' });
-        }
-        const nonce = rows[0].nonce;
-        const message = `Sign in to boardlyX\n\nNonce: ${nonce}`;
-        const valid = await (0, viem_1.verifyMessage)({
-            address: address.toLowerCase(),
-            message,
-            signature: signature,
-        });
-        if (!valid) {
-            return res.status(401).json({ error: 'Invalid signature' });
-        }
-        const upsert = await db_1.pool.query(`insert into users (wallet_address)
-       values ($1)
-       on conflict (wallet_address) do update set updated_at = now()
-       returning id, email, name, username`, [address.toLowerCase()]);
-        const user = upsert.rows[0];
-        const token = signAppJwt({
-            userId: user.id,
-            email: user.email,
-            walletAddress: address.toLowerCase(),
-        });
-        await db_1.pool.query('delete from wallet_nonces where wallet_address = $1', [address.toLowerCase()]);
-        return res.json({
-            token,
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                username: user.username,
-                walletAddress: address.toLowerCase(),
-            },
-            needsUsername: !user.username,
-        });
-    }
-    catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[wallet/login]', err);
-        if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
-            return res.status(503).json({ error: 'Database connection issue. Please try again.' });
-        }
-        return res.status(500).json({ error: 'Internal server error' });
-    }
-});
 // Check username availability
 router.get('/check-username', async (req, res) => {
     const username = (req.query.username || '').trim();
@@ -188,7 +100,7 @@ router.get('/check-username', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 });
-// Set username (for wallet users or users who don't have one yet)
+// Set username (for users who don't have one yet)
 const SetUsernameSchema = zod_1.z.object({
     username: zod_1.z.string().regex(UsernameRegex, 'Username must be 3-30 chars (letters, numbers, underscore)'),
     name: zod_1.z.string().min(1).optional(),
@@ -213,7 +125,7 @@ router.post('/set-username', async (req, res) => {
         const taken = await db_1.pool.query('select id from users where lower(username) = lower($1) and id != $2', [username, decoded.userId]);
         if (taken.rows[0])
             return res.status(409).json({ error: 'Username is already taken' });
-        const { rows } = await db_1.pool.query(`update users set username = $1, name = coalesce($2, name), updated_at = now() where id = $3 returning id, email, name, username, wallet_address`, [username, name ?? null, decoded.userId]);
+        const { rows } = await db_1.pool.query(`update users set username = $1, name = coalesce($2, name), updated_at = now() where id = $3 returning id, email, name, username`, [username, name ?? null, decoded.userId]);
         if (!rows[0])
             return res.status(404).json({ error: 'User not found' });
         return res.json({
@@ -222,7 +134,6 @@ router.post('/set-username', async (req, res) => {
                 email: rows[0].email,
                 name: rows[0].name,
                 username: rows[0].username,
-                walletAddress: rows[0].wallet_address,
             },
         });
     }

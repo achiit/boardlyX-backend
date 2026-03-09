@@ -9,6 +9,7 @@ import teamRoutes from './routes/teams';
 import notificationRoutes from './routes/notifications';
 import userRoutes from './routes/users';
 import chatRoutes from './routes/chat';
+import resourceRoutes from './routes/resourceRoutes';
 import { apiLimiter, authLimiter } from './middleware/rateLimit';
 import { errorHandler } from './middleware/errorHandler';
 import { initSocket } from './socket';
@@ -37,6 +38,7 @@ async function main() {
   app.use('/api/notifications', apiLimiter, notificationRoutes);
   app.use('/api/users', apiLimiter, userRoutes);
   app.use('/api/chat', apiLimiter, chatRoutes);
+  app.use('/api/resources', apiLimiter, resourceRoutes);
 
   app.use(errorHandler);
 

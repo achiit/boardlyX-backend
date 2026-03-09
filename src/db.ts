@@ -165,4 +165,27 @@ export async function initDb() {
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_data text;`).catch(() => { });
   await pool.query(`ALTER TABLE messages ALTER COLUMN content DROP NOT NULL;`).catch(() => { });
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id uuid references messages(id) on delete set null;`).catch(() => { });
+
+  // ── Resources tables ──
+  await pool.query(`
+    create table if not exists resource_categories (
+      id uuid primary key default gen_random_uuid(),
+      team_id uuid not null references teams(id) on delete cascade,
+      name text not null,
+      created_at timestamptz default now()
+    );
+  `);
+
+  await pool.query(`
+    create table if not exists resources (
+      id uuid primary key default gen_random_uuid(),
+      category_id uuid not null references resource_categories(id) on delete cascade,
+      user_id uuid not null references users(id) on delete cascade,
+      title text not null,
+      url text not null,
+      description text default '',
+      created_at timestamptz default now()
+    );
+  `);
+  await pool.query(`create index if not exists idx_resources_category on resources(category_id);`);
 }

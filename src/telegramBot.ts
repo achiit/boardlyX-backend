@@ -255,6 +255,49 @@ export async function notifyTaskUpdated(
 }
 
 /**
+ * Sends a notification to all members of a team (except the sender) when a new resource is added
+ */
+export async function notifyTeamMembersOfResource(
+    teamId: string,
+    teamName: string,
+    senderId: string,
+    senderName: string,
+    categoryName: string,
+    resourceTitle: string,
+    resourceUrl: string
+) {
+    if (!bot) return;
+
+    try {
+        console.log(`[Telegram] Notifying members for new resource in team: ${teamId}, Sender: ${senderId}`);
+        const { rows } = await pool.query(
+            `
+      SELECT u.id as user_id, u.telegram_chat_id 
+      FROM team_members tm
+      JOIN users u ON tm.user_id = u.id
+      WHERE tm.team_id = $1 
+        AND tm.user_id != $2 
+        AND u.telegram_chat_id IS NOT NULL
+      `,
+            [teamId, senderId]
+        );
+
+        for (const row of rows) {
+            const chatId = row.telegram_chat_id;
+            if (chatId) {
+                const messageText = `🔗 New Resource added in *${teamName}* (${categoryName}) by ${senderName}:\n\n*${resourceTitle}*\n${resourceUrl}`;
+
+                bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' }).catch(err => {
+                    console.error(`Failed to send telegram resource notification to chat ID ${chatId}:`, err);
+                });
+            }
+        }
+    } catch (err) {
+        console.error('Error notifying team members of resource via Telegram:', err);
+    }
+}
+
+/**
  * Targeted notification for mentions
  * Returns the list of UUIDs that were successfully found and notified
  */

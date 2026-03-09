@@ -33,6 +33,14 @@ export async function listCategories(teamId: string): Promise<ResourceCategoryRo
     return rows;
 }
 
+export async function getCategoryById(id: string): Promise<ResourceCategoryRow | null> {
+    const { rows } = await pool.query<ResourceCategoryRow>(
+        'select * from resource_categories where id = $1',
+        [id]
+    );
+    return rows[0] || null;
+}
+
 export async function deleteCategory(id: string): Promise<boolean> {
     const { rowCount } = await pool.query(
         'delete from resource_categories where id = $1',
